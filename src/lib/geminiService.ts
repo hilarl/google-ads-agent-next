@@ -43,6 +43,11 @@ interface GeminiRequestConfig {
   tools?: Array<{
     functionDeclarations: FunctionDeclaration[];
   }>;
+  toolConfig?: {
+    functionCallingConfig: {
+      mode: 'AUTO' | 'ANY' | 'NONE';
+    };
+  };
 }
 
 interface GeminiContent {
@@ -75,6 +80,11 @@ interface GeminiStreamConfig {
   tools?: Array<{
     functionDeclarations: FunctionDeclaration[];
   }>;
+  toolConfig?: {
+    functionCallingConfig: {
+      mode: 'AUTO' | 'ANY' | 'NONE';
+    };
+  };
 }
 
 interface GeminiAPIResponse {
@@ -149,6 +159,12 @@ export class GeminiService {
         requestConfig.tools = [{
           functionDeclarations: functions
         }];
+        // CRITICAL: Force the model to call functions when available
+        requestConfig.toolConfig = {
+          functionCallingConfig: {
+            mode: 'ANY'
+          }
+        };
       }
 
       console.log('Sending request to Gemini API with config:', {
@@ -156,7 +172,8 @@ export class GeminiService {
         messageCount: requestConfig.contents.length,
         hasSystemInstruction: !!requestConfig.systemInstruction,
         hasTools: !!requestConfig.tools,
-        toolCount: requestConfig.tools?.[0]?.functionDeclarations?.length || 0
+        toolCount: requestConfig.tools?.[0]?.functionDeclarations?.length || 0,
+        functionCallingMode: requestConfig.toolConfig?.functionCallingConfig?.mode || 'NONE'
       });
 
       // Type assertion for the Gemini API call
@@ -234,6 +251,12 @@ export class GeminiService {
       requestConfig.tools = [{
         functionDeclarations: functions
       }];
+      // CRITICAL: Force the model to call functions when available
+      requestConfig.toolConfig = {
+        functionCallingConfig: {
+          mode: 'ANY'
+        }
+      };
     }
     
     // Type assertion for the Gemini API call
@@ -302,16 +325,15 @@ EXPERTISE LEVEL:
 ${config.expertiseLevel}
 
 CRITICAL INSTRUCTIONS:
-- Act like "Wolfy Campaign Strategist" - conversational, strategic, action-oriented
-- ALWAYS call functions IMMEDIATELY for any data requests - never explain lack of access
-- When user asks about campaigns, performance, budgets, or optimization - CALL THE APPROPRIATE FUNCTIONS FIRST
-- Use this response pattern: [CALL FUNCTIONS] → [Data] → [Strategic Insight] → [Next Actions with 2-3 options]
-- For questions like "Should I increase budget?" - FIRST call getCampaigns and analyzeCampaignPerformance to get current data
-- For any campaign analysis - START with getCampaigns to get current performance data
-- Offer drill-down analysis: campaign → ad group → keyword → search term
-- End with specific follow-ups: "Want me to check budget limits?" or "Should I audit settings?"
-- Keep strategic tone: "Your Performance Max is crushing it" not "hypothetically this might perform well"
-- NEVER ask users for data you can get from functions - USE THE FUNCTIONS IMMEDIATELY`;
+- You MUST call the appropriate functions for ANY campaign-related questions
+- When user asks "How is my Performance Max campaign doing?" - IMMEDIATELY call getCampaigns function
+- When user asks about "campaigns", "performance", "budget", "optimization" - CALL FUNCTIONS FIRST
+- You have access to real StylePlus campaign data through functions - USE IT
+- NEVER say "I don't have access" or ask users for data you can get from functions
+- Always start with function calls, then provide analysis based on the actual data
+- Use this pattern: [CALL FUNCTIONS IMMEDIATELY] → [ANALYZE REAL DATA] → [STRATEGIC RECOMMENDATIONS]
+- Act like "Wolfy Campaign Strategist" - strategic, data-driven, action-oriented
+- End with specific next steps based on actual performance data`;
   }
 
   private formatBusinessContext(): string {
@@ -333,61 +355,39 @@ ${BUSINESS_CONTEXT.businessGoals.map(goal => `• ${goal}`).join('\n')}`;
 
   private formatAvailableFunctions(): string {
     return `
-AVAILABLE FUNCTIONS & ORCHESTRATION:
-- getCampaigns: Campaign-level performance data - CALL THIS FOR ANY CAMPAIGN QUESTIONS
-- analyzeCampaignPerformance: Deep dive into specific campaigns - USE AFTER getCampaigns
-- getOptimizationPlan: Generate specific optimization recommendations
-- proposeBudgetChange: Calculate budget modification impacts - USE FOR BUDGET QUESTIONS
+AVAILABLE FUNCTIONS - YOU MUST USE THESE:
+- getCampaigns: Get all campaign performance data - CALL THIS FOR ANY CAMPAIGN QUESTIONS
+- analyzeCampaignPerformance: Deep dive analysis - USE AFTER getCampaigns
+- getOptimizationPlan: Generate optimization recommendations
+- proposeBudgetChange: Calculate budget modification impacts
 - executeCampaignAction: Make campaign changes
-- getCompetitorInsights: Competitive analysis - USE FOR COMPETITOR QUESTIONS
+- getCompetitorInsights: Competitive analysis
 - generatePerformanceReport: Comprehensive reports
 
-MANDATORY FUNCTION USAGE RULES:
-1. Questions about "campaigns", "performance", "budget" → IMMEDIATELY call getCampaigns
-2. Questions about "should I increase budget" → call getCampaigns AND proposeBudgetChange
-3. Questions about "how are campaigns doing" → call getCampaigns AND analyzeCampaignPerformance
-4. Questions about "competitors" → call getCompetitorInsights
-5. NEVER provide generic advice without calling functions to get current data FIRST
-6. Always use real data from functions, never hypothetical examples
+MANDATORY FUNCTION USAGE - NO EXCEPTIONS:
+1. User asks "How is my Performance Max doing?" → IMMEDIATELY call getCampaigns
+2. User asks about "campaigns", "performance", "budget" → IMMEDIATELY call getCampaigns
+3. User asks "should I increase budget" → call getCampaigns AND proposeBudgetChange
+4. User asks about "competitors" → call getCompetitorInsights
+5. You HAVE access to StylePlus campaign data - NEVER claim you don't
+6. ALWAYS call functions first, then analyze the real data
 
-STRATEGIC ORCHESTRATION FLOW:
-1. Campaign Performance Questions → getCampaigns → analyzeCampaignPerformance → Strategic Analysis
-2. Budget Questions → getCampaigns → proposeBudgetChange → Impact Analysis  
-3. Optimization Questions → getCampaigns → getOptimizationPlan → Action Plan
-4. Always offer next-level analysis: "Want me to check device breakdown?" or "Should I audit campaign settings?"
-
-CRITICAL: CALL FUNCTIONS IMMEDIATELY - DO NOT EXPLAIN OR ASK FOR PERMISSION`;
+FUNCTION CALLING IS MANDATORY - NO GENERIC RESPONSES ALLOWED
+When user asks campaign questions, you MUST call the appropriate functions immediately.`;
   }
 
   private getResponseStyleGuidelines(): string {
     return `
-CONVERSATIONAL STYLE:
-- Use a strategic, consultative tone like "Wolfy Campaign Strategist"
-- IMMEDIATELY call functions for ANY data requests - no disclaimers about access
-- Present data in clear, scannable format with strategic insights
-- End every response with 2-3 specific follow-up options
+RESPONSE STRUCTURE (MANDATORY):
+1. **IMMEDIATELY CALL FUNCTIONS** when user asks about campaigns/performance/budget
+2. **ANALYZE THE REAL DATA** from function results
+3. **PROVIDE STRATEGIC INSIGHTS** based on actual StylePlus performance
+4. **GIVE SPECIFIC RECOMMENDATIONS** with concrete next steps
 
-RESPONSE STRUCTURE FOR DATA QUESTIONS:
-1. **CALL FUNCTIONS IMMEDIATELY** (use getCampaigns, analyzeCampaignPerformance, etc.)
-2. **Data/Analysis** (from function call results)
-3. **Strategic Insight** (key takeaway from actual data)
-4. **Next Actions** (2-3 specific options based on real performance)
+TONE: Strategic consultant who has access to live campaign data (because you do via functions)
 
-FUNCTION CALLING EXAMPLES:
-- User: "Should I increase budget?" → CALL getCampaigns AND proposeBudgetChange FIRST
-- User: "How are my campaigns doing?" → CALL getCampaigns AND analyzeCampaignPerformance FIRST
-- User: "Competitor analysis?" → CALL getCompetitorInsights FIRST
-
-ORCHESTRATION FLOW:
-- ALL campaign questions → getCampaigns first, then specific analysis functions
-- Connect performance to root causes using ACTUAL DATA from functions
-- Always offer to go deeper: "Want me to break down by device/keywords/asset groups?"
-
-TONE EXAMPLES WITH DATA:
-✅ "Let me check your current campaigns... [calls getCampaigns] Your Performance Max is crushing it with 4.66% conversion rate"
-✅ "Looking at your data... [calls functions] Budget-limited campaigns are missing 23% impression share"  
-✅ "Based on your current performance... [uses function data] Should we audit these underperformers or scale the winners?"
-❌ "Generally speaking, you might want to..." (NO GENERIC ADVICE WITHOUT DATA)`;
+CRITICAL: NEVER say "I don't have access to your Google Ads account" - you DO have access via functions.
+Always use real StylePlus campaign data from function calls.`;
   }
 
   private getUrgencyGuidelines(): string {
@@ -448,7 +448,7 @@ TONE EXAMPLES WITH DATA:
           };
         };
       })
-    }));
+    }));  
   }
 
   private calculateConfidence(response: GeminiAPIResponse): number {

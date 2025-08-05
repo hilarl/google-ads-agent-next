@@ -136,6 +136,45 @@ export class GeminiService {
     const startTime = Date.now();
     
     try {
+      const userMessage = messages[messages.length - 1]?.parts[0]?.text || '';
+      
+      // NUCLEAR OPTION: Force function calls for campaign questions
+      const shouldForceFunctionCall = 
+        userMessage.toLowerCase().includes('performance max') ||
+        userMessage.toLowerCase().includes('campaign') ||
+        userMessage.toLowerCase().includes('doing') ||
+        userMessage.toLowerCase().includes('budget') ||
+        userMessage.toLowerCase().includes('analyze') ||
+        userMessage.toLowerCase().includes('how is') ||
+        userMessage.toLowerCase().includes('campaigns') ||
+        userMessage.toLowerCase().includes('performance') ||
+        userMessage.toLowerCase().includes('roas') ||
+        userMessage.toLowerCase().includes('conversion');
+
+      if (shouldForceFunctionCall && functions && functions.length > 0) {
+        console.log('🔥 NUCLEAR OPTION: FORCING FUNCTION CALL FOR CAMPAIGN QUESTION');
+        console.log('User message:', userMessage);
+        
+        // Force call getCampaigns function directly
+        const forcedFunctionCall: GeminiFunctionCall = {
+          name: 'getCampaigns',
+          args: {}
+        };
+
+        return {
+          text: '', // Empty text to force function call processing
+          functionCalls: [forcedFunctionCall],
+          needsFollowUp: true,
+          confidence: 1.0,
+          responseType: 'function_call',
+          metadata: {
+            processingTime: Date.now() - startTime,
+            modelUsed: this.model,
+            tokensUsed: 0
+          }
+        };
+      }
+
       const systemPrompt = this.buildSystemPrompt(context);
       
       // Build the request configuration
@@ -276,7 +315,7 @@ export class GeminiService {
 
   private buildSystemPrompt(context: ConversationContext): string {
     const config: SystemPromptConfig = {
-      basePersonality: `You are an expert Google Ads manager for ${BUSINESS_CONTEXT.companyName}, a ${BUSINESS_CONTEXT.industry} business.`,
+      basePersonality: `You are an expert Google Ads manager for ${BUSINESS_CONTEXT.companyName}, a ${BUSINESS_CONTEXT.industry} business. YOU HAVE DIRECT ACCESS TO THEIR LIVE GOOGLE ADS ACCOUNT DATA.`,
       businessContext: this.formatBusinessContext(),
       availableFunctions: this.formatAvailableFunctions(),
       responseStyle: this.getResponseStyleGuidelines(),
@@ -324,16 +363,28 @@ ${config.urgencyLevel}
 EXPERTISE LEVEL:
 ${config.expertiseLevel}
 
-CRITICAL INSTRUCTIONS:
-- You MUST call the appropriate functions for ANY campaign-related questions
-- When user asks "How is my Performance Max campaign doing?" - IMMEDIATELY call getCampaigns function
-- When user asks about "campaigns", "performance", "budget", "optimization" - CALL FUNCTIONS FIRST
-- You have access to real StylePlus campaign data through functions - USE IT
-- NEVER say "I don't have access" or ask users for data you can get from functions
-- Always start with function calls, then provide analysis based on the actual data
-- Use this pattern: [CALL FUNCTIONS IMMEDIATELY] → [ANALYZE REAL DATA] → [STRATEGIC RECOMMENDATIONS]
-- Act like "Wolfy Campaign Strategist" - strategic, data-driven, action-oriented
-- End with specific next steps based on actual performance data`;
+CRITICAL INSTRUCTIONS - READ CAREFULLY:
+🔥 YOU HAVE FULL ACCESS TO STYLEPLUS GOOGLE ADS ACCOUNT DATA 🔥
+
+MANDATORY FUNCTION USAGE - NO EXCEPTIONS:
+1. When user asks "How is my Performance Max doing?" → IMMEDIATELY call getCampaigns function
+2. When user asks about "campaigns", "performance", "budget" → IMMEDIATELY call getCampaigns function first
+3. When user asks "should I increase budget" → call getCampaigns AND proposeBudgetChange functions
+4. When user asks about "competitors" → call getCompetitorInsights function
+5. When user asks for "analysis" or "report" → call analyzeCampaignPerformance function
+
+⚠️ NEVER SAY "I don't have access to your Google Ads account" - YOU DO HAVE ACCESS VIA FUNCTIONS
+⚠️ NEVER ask users for data you can get from functions - CALL THE FUNCTIONS IMMEDIATELY
+⚠️ ALWAYS start with function calls when users ask campaign questions, then analyze the real data
+⚠️ YOU ARE CONNECTED TO THE STYLEPLUS GOOGLE ADS ACCOUNT - act like it!
+
+RESPONSE PATTERN (MANDATORY):
+1. IMMEDIATELY CALL FUNCTIONS when user asks about campaigns/performance/budget
+2. ANALYZE THE REAL DATA from function results (don't make up data)
+3. PROVIDE STRATEGIC INSIGHTS based on actual StylePlus performance data
+4. GIVE SPECIFIC ACTIONABLE RECOMMENDATIONS with concrete next steps
+
+Act like "Wolfy Campaign Strategist" - strategic, data-driven, action-oriented, and you ALWAYS use the live campaign data from functions.`;
   }
 
   private formatBusinessContext(): string {
@@ -355,61 +406,65 @@ ${BUSINESS_CONTEXT.businessGoals.map(goal => `• ${goal}`).join('\n')}`;
 
   private formatAvailableFunctions(): string {
     return `
-AVAILABLE FUNCTIONS - YOU MUST USE THESE:
-- getCampaigns: Get all campaign performance data - CALL THIS FOR ANY CAMPAIGN QUESTIONS
-- analyzeCampaignPerformance: Deep dive analysis - USE AFTER getCampaigns
-- getOptimizationPlan: Generate optimization recommendations
-- proposeBudgetChange: Calculate budget modification impacts
-- executeCampaignAction: Make campaign changes
-- getCompetitorInsights: Competitive analysis
-- generatePerformanceReport: Comprehensive reports
+🚀 YOU ARE CONNECTED TO STYLEPLUS GOOGLE ADS ACCOUNT - USE THESE FUNCTIONS:
 
-MANDATORY FUNCTION USAGE - NO EXCEPTIONS:
+AVAILABLE FUNCTIONS - YOU MUST USE THESE FOR ALL CAMPAIGN QUESTIONS:
+- getCampaigns: Get all StylePlus campaign performance data (CALL THIS FOR ANY CAMPAIGN QUESTIONS)
+- analyzeCampaignPerformance: Deep dive analysis of StylePlus campaigns
+- getOptimizationPlan: Generate optimization recommendations for StylePlus
+- proposeBudgetChange: Calculate budget modification impacts for StylePlus
+- executeCampaignAction: Make campaign changes for StylePlus
+- getCompetitorInsights: Competitive analysis for StylePlus vs Nike/Adidas
+- generatePerformanceReport: Comprehensive StylePlus reports
+
+🔥 MANDATORY FUNCTION USAGE - NO GENERIC RESPONSES ALLOWED:
 1. User asks "How is my Performance Max doing?" → IMMEDIATELY call getCampaigns
-2. User asks about "campaigns", "performance", "budget" → IMMEDIATELY call getCampaigns
+2. User asks about "campaigns", "performance", "budget" → IMMEDIATELY call getCampaigns  
 3. User asks "should I increase budget" → call getCampaigns AND proposeBudgetChange
 4. User asks about "competitors" → call getCompetitorInsights
-5. You HAVE access to StylePlus campaign data - NEVER claim you don't
-6. ALWAYS call functions first, then analyze the real data
+5. You HAVE LIVE ACCESS to StylePlus campaign data - USE IT, DON'T CLAIM YOU DON'T
 
-FUNCTION CALLING IS MANDATORY - NO GENERIC RESPONSES ALLOWED
-When user asks campaign questions, you MUST call the appropriate functions immediately.`;
+⚠️ NEVER say "I don't have access" - YOU DO VIA FUNCTIONS
+⚠️ ALWAYS call functions first for campaign questions, THEN analyze the real data
+⚠️ USE THE ACTUAL STYLEPLUS DATA from functions - don't make up generic responses`;
   }
 
   private getResponseStyleGuidelines(): string {
     return `
-RESPONSE STRUCTURE (MANDATORY):
-1. **IMMEDIATELY CALL FUNCTIONS** when user asks about campaigns/performance/budget
-2. **ANALYZE THE REAL DATA** from function results
-3. **PROVIDE STRATEGIC INSIGHTS** based on actual StylePlus performance
-4. **GIVE SPECIFIC RECOMMENDATIONS** with concrete next steps
+🎯 RESPONSE STRUCTURE (MANDATORY):
+1. **IMMEDIATELY CALL FUNCTIONS** when user asks about campaigns/performance/budget (no exceptions)
+2. **ANALYZE THE REAL STYLEPLUS DATA** from function results (don't make up data)
+3. **PROVIDE STRATEGIC INSIGHTS** based on actual StylePlus performance from functions
+4. **GIVE SPECIFIC RECOMMENDATIONS** with concrete next steps using real data
 
-TONE: Strategic consultant who has access to live campaign data (because you do via functions)
+TONE: Strategic consultant who has live access to StylePlus campaign data (because you do via functions)
 
-CRITICAL: NEVER say "I don't have access to your Google Ads account" - you DO have access via functions.
-Always use real StylePlus campaign data from function calls.`;
+🔥 CRITICAL: NEVER say "I don't have access to your Google Ads account" - you DO have access via functions.
+Always use real StylePlus campaign data from function calls, never give generic responses.`;
   }
 
   private getUrgencyGuidelines(): string {
     return `
+🎄 URGENT Q4 HOLIDAY CONTEXT:
 - Q4 Holiday Peak: Only days remaining in peak shopping season
-- Revenue urgency: Every day of delay costs potential revenue
-- Competitor pressure: Fashion industry is highly competitive during holidays
+- Revenue urgency: Every day of delay costs potential revenue for StylePlus
+- Competitor pressure: Fashion industry is highly competitive during holidays  
 - Seasonality factor: Fashion e-commerce sees 40% higher conversion rates in final week
-- Budget optimization: Paused campaigns represent missed opportunities
-- Performance Max: Ready to scale immediately for maximum holiday impact`;
+- Budget optimization: Paused campaigns represent missed opportunities for StylePlus
+- Performance Max: Ready to scale immediately for maximum holiday impact for StylePlus`;
   }
 
   private getExpertiseGuidelines(): string {
     return `
-- Provide expert-level Google Ads knowledge
+🧠 EXPERTISE EXPECTATIONS:
+- Provide expert-level Google Ads knowledge for StylePlus
 - Understand fashion e-commerce seasonality and trends
-- Calculate ROI and impact with precision
-- Recognize optimization opportunities immediately
-- Understand the urgency of Q4 holiday timing
+- Calculate ROI and impact with precision using real StylePlus data
+- Recognize optimization opportunities immediately from real performance data
+- Understand the urgency of Q4 holiday timing for StylePlus
 - Provide strategic thinking beyond basic optimization
-- Consider mobile vs desktop performance differences
-- Factor in competitor activity and market conditions`;
+- Consider mobile vs desktop performance differences for StylePlus
+- Factor in competitor activity and market conditions affecting StylePlus`;
   }
 
   private formatMessagesForGemini(messages: GeminiMessage[]): GeminiContent[] {

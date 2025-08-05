@@ -27,9 +27,9 @@ interface FunctionParameter {
   properties?: Record<string, FunctionParameter>;
 }
 
-interface GeminiApiRequest {
+interface GeminiRequestConfig {
   model: string;
-  contents: GeminiApiContent[];
+  contents: GeminiContent[];
   systemInstruction: {
     role: string;
     parts: Array<{ text: string }>;
@@ -37,15 +37,15 @@ interface GeminiApiRequest {
   generationConfig: {
     temperature: number;
     maxOutputTokens: number;
-    topP?: number;
-    topK?: number;
+    topP: number;
+    topK: number;
   };
   tools?: Array<{
     functionDeclarations: FunctionDeclaration[];
   }>;
 }
 
-interface GeminiApiContent {
+interface GeminiContent {
   role: string;
   parts: Array<{
     text?: string;
@@ -61,30 +61,33 @@ interface GeminiApiContent {
   }>;
 }
 
-interface GeminiApiResponse {
+interface GeminiStreamConfig {
+  model: string;
+  contents: GeminiContent[];
+  systemInstruction: {
+    role: string;
+    parts: Array<{ text: string }>;
+  };
+  generationConfig: {
+    temperature: number;
+    maxOutputTokens: number;
+  };
+  tools?: Array<{
+    functionDeclarations: FunctionDeclaration[];
+  }>;
+}
+
+interface GeminiAPIResponse {
   text?: string;
   candidates?: Array<{
     content?: {
       parts?: Array<{
-        text?: string;
         functionCall?: {
-          name: string;
-          args: Record<string, unknown>;
+          name?: string;
+          args?: Record<string, unknown>;
         };
       }>;
     };
-  }>;
-}
-
-interface GeminiStreamChunk {
-  text?: string;
-}
-
-interface GeminiApiSimpleRequest {
-  model: string;
-  contents: Array<{
-    role: string;
-    parts: Array<{ text: string }>;
   }>;
 }
 
@@ -126,7 +129,7 @@ export class GeminiService {
       const systemPrompt = this.buildSystemPrompt(context);
       
       // Build the request configuration
-      const requestConfig: GeminiApiRequest = {
+      const requestConfig: GeminiRequestConfig = {
         model: this.model,
         contents: this.formatMessagesForGemini(messages),
         systemInstruction: {
@@ -156,8 +159,8 @@ export class GeminiService {
         toolCount: requestConfig.tools?.[0]?.functionDeclarations?.length || 0
       });
 
-      // Call the Gemini API with proper typing
-      const result = await this.ai.models.generateContent(requestConfig) as GeminiApiResponse;
+      // Type assertion for the Gemini API call
+      const result = await this.ai.models.generateContent(requestConfig as unknown as Parameters<typeof this.ai.models.generateContent>[0]);
       
       console.log('Received response from Gemini API:', {
         hasText: !!result.text,
@@ -173,7 +176,7 @@ export class GeminiService {
           if (part.functionCall && part.functionCall.name) {
             functionCalls.push({
               name: part.functionCall.name,
-              args: part.functionCall.args || {}
+              args: (part.functionCall.args as Record<string, unknown>) || {}
             });
           }
         }
@@ -214,7 +217,7 @@ export class GeminiService {
   ): Promise<AsyncGenerator<string, void, unknown>> {
     const systemPrompt = this.buildSystemPrompt(context);
     
-    const requestConfig: GeminiApiRequest = {
+    const requestConfig: GeminiStreamConfig = {
       model: this.model,
       contents: this.formatMessagesForGemini(messages),
       systemInstruction: {
@@ -233,8 +236,8 @@ export class GeminiService {
       }];
     }
     
-    // Call the streaming API with proper typing
-    const result = await this.ai.models.generateContentStream(requestConfig) as AsyncIterable<GeminiStreamChunk>;
+    // Type assertion for the Gemini API call
+    const result = await this.ai.models.generateContentStream(requestConfig as unknown as Parameters<typeof this.ai.models.generateContentStream>[0]);
 
     async function* streamGenerator() {
       for await (const chunk of result) {
@@ -300,11 +303,15 @@ ${config.expertiseLevel}
 
 CRITICAL INSTRUCTIONS:
 - Act like "Wolfy Campaign Strategist" - conversational, strategic, action-oriented
-- ALWAYS call functions for data requests - never explain lack of access
-- Use this response pattern: [Data] → [Strategic Insight] → [Next Actions with 2-3 options]
+- ALWAYS call functions IMMEDIATELY for any data requests - never explain lack of access
+- When user asks about campaigns, performance, budgets, or optimization - CALL THE APPROPRIATE FUNCTIONS FIRST
+- Use this response pattern: [CALL FUNCTIONS] → [Data] → [Strategic Insight] → [Next Actions with 2-3 options]
+- For questions like "Should I increase budget?" - FIRST call getCampaigns and analyzeCampaignPerformance to get current data
+- For any campaign analysis - START with getCampaigns to get current performance data
 - Offer drill-down analysis: campaign → ad group → keyword → search term
 - End with specific follow-ups: "Want me to check budget limits?" or "Should I audit settings?"
-- Keep strategic tone: "Your Performance Max is crushing it" not "hypothetically this might perform well"`;
+- Keep strategic tone: "Your Performance Max is crushing it" not "hypothetically this might perform well"
+- NEVER ask users for data you can get from functions - USE THE FUNCTIONS IMMEDIATELY`;
   }
 
   private formatBusinessContext(): string {
@@ -327,46 +334,60 @@ ${BUSINESS_CONTEXT.businessGoals.map(goal => `• ${goal}`).join('\n')}`;
   private formatAvailableFunctions(): string {
     return `
 AVAILABLE FUNCTIONS & ORCHESTRATION:
-- getCampaigns: Campaign-level performance data
-- analyzeCampaignPerformance: Deep dive into specific campaigns
+- getCampaigns: Campaign-level performance data - CALL THIS FOR ANY CAMPAIGN QUESTIONS
+- analyzeCampaignPerformance: Deep dive into specific campaigns - USE AFTER getCampaigns
 - getOptimizationPlan: Generate specific optimization recommendations
-- proposeBudgetChange: Calculate budget modification impacts
+- proposeBudgetChange: Calculate budget modification impacts - USE FOR BUDGET QUESTIONS
 - executeCampaignAction: Make campaign changes
-- getCompetitorInsights: Competitive analysis
+- getCompetitorInsights: Competitive analysis - USE FOR COMPETITOR QUESTIONS
 - generatePerformanceReport: Comprehensive reports
 
+MANDATORY FUNCTION USAGE RULES:
+1. Questions about "campaigns", "performance", "budget" → IMMEDIATELY call getCampaigns
+2. Questions about "should I increase budget" → call getCampaigns AND proposeBudgetChange
+3. Questions about "how are campaigns doing" → call getCampaigns AND analyzeCampaignPerformance
+4. Questions about "competitors" → call getCompetitorInsights
+5. NEVER provide generic advice without calling functions to get current data FIRST
+6. Always use real data from functions, never hypothetical examples
+
 STRATEGIC ORCHESTRATION FLOW:
-1. Campaign Performance → Root Cause Analysis
-2. High/Low performers → Budget/bid optimization opportunities
-3. Underperformers → Ad group/keyword/search term breakdown
+1. Campaign Performance Questions → getCampaigns → analyzeCampaignPerformance → Strategic Analysis
+2. Budget Questions → getCampaigns → proposeBudgetChange → Impact Analysis  
+3. Optimization Questions → getCampaigns → getOptimizationPlan → Action Plan
 4. Always offer next-level analysis: "Want me to check device breakdown?" or "Should I audit campaign settings?"
 
-CRITICAL: Use functions immediately for ANY data request. Present results conversationally with strategic insights and follow-up options.`;
+CRITICAL: CALL FUNCTIONS IMMEDIATELY - DO NOT EXPLAIN OR ASK FOR PERMISSION`;
   }
 
   private getResponseStyleGuidelines(): string {
     return `
 CONVERSATIONAL STYLE:
 - Use a strategic, consultative tone like "Wolfy Campaign Strategist"
-- Always call functions immediately for data requests - no disclaimers about access
+- IMMEDIATELY call functions for ANY data requests - no disclaimers about access
 - Present data in clear, scannable format with strategic insights
 - End every response with 2-3 specific follow-up options
 
-RESPONSE STRUCTURE:
-1. **Data/Analysis** (from function calls)
-2. **Strategic Insight** (key takeaway)
-3. **Next Actions** (2-3 specific options)
+RESPONSE STRUCTURE FOR DATA QUESTIONS:
+1. **CALL FUNCTIONS IMMEDIATELY** (use getCampaigns, analyzeCampaignPerformance, etc.)
+2. **Data/Analysis** (from function call results)
+3. **Strategic Insight** (key takeaway from actual data)
+4. **Next Actions** (2-3 specific options based on real performance)
+
+FUNCTION CALLING EXAMPLES:
+- User: "Should I increase budget?" → CALL getCampaigns AND proposeBudgetChange FIRST
+- User: "How are my campaigns doing?" → CALL getCampaigns AND analyzeCampaignPerformance FIRST
+- User: "Competitor analysis?" → CALL getCompetitorInsights FIRST
 
 ORCHESTRATION FLOW:
-- Campaign issues → drill into ad groups → keywords → search terms
+- ALL campaign questions → getCampaigns first, then specific analysis functions
+- Connect performance to root causes using ACTUAL DATA from functions
 - Always offer to go deeper: "Want me to break down by device/keywords/asset groups?"
-- Connect performance to root causes and actionable fixes
 
-TONE EXAMPLES:
-✅ "Your Performance Max is crushing it with 4.66% conversion rate"
-✅ "Budget-limited campaigns are missing 23% impression share"
-✅ "Should we audit these underperformers or scale the winners?"
-❌ Academic explanations or hypothetical examples`;
+TONE EXAMPLES WITH DATA:
+✅ "Let me check your current campaigns... [calls getCampaigns] Your Performance Max is crushing it with 4.66% conversion rate"
+✅ "Looking at your data... [calls functions] Budget-limited campaigns are missing 23% impression share"  
+✅ "Based on your current performance... [uses function data] Should we audit these underperformers or scale the winners?"
+❌ "Generally speaking, you might want to..." (NO GENERIC ADVICE WITHOUT DATA)`;
   }
 
   private getUrgencyGuidelines(): string {
@@ -391,7 +412,7 @@ TONE EXAMPLES:
 - Factor in competitor activity and market conditions`;
   }
 
-  private formatMessagesForGemini(messages: GeminiMessage[]): GeminiApiContent[] {
+  private formatMessagesForGemini(messages: GeminiMessage[]): GeminiContent[] {
     return messages.map(msg => ({
       role: msg.role === 'model' ? 'model' : 'user',
       parts: msg.parts.map(part => {
@@ -414,17 +435,23 @@ TONE EXAMPLES:
             }
           };
         }
-        // Fallback for any other part structure
-        return {
-          text: '',
-          functionCall: part.functionCall,
-          functionResponse: part.functionResponse
+        return part as {
+          text?: string;
+          functionCall?: GeminiFunctionCall;
+          functionResponse?: {
+            name: string;
+            response: {
+              result: unknown;
+              success: boolean;
+              error?: string;
+            };
+          };
         };
       })
     }));
   }
 
-  private calculateConfidence(response: GeminiApiResponse): number {
+  private calculateConfidence(response: GeminiAPIResponse): number {
     // Simple confidence calculation based on response characteristics
     const text = response.text || '';
     const hasSpecificData = text.includes('$') || text.includes('%');
@@ -561,12 +588,10 @@ TONE EXAMPLES:
   async validateConnection(): Promise<boolean> {
     try {
       console.log('Validating connection to Gemini API...');
-      const requestConfig: GeminiApiSimpleRequest = {
+      const result = await this.ai.models.generateContent({
         model: this.model,
         contents: [{ role: 'user', parts: [{ text: 'Hello' }] }]
-      };
-      
-      const result = await this.ai.models.generateContent(requestConfig) as GeminiApiResponse;
+      } as unknown as Parameters<typeof this.ai.models.generateContent>[0]);
       const hasResponse = !!(result && result.text);
       console.log('Connection validation result:', hasResponse);
       return hasResponse;

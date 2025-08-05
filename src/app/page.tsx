@@ -3,58 +3,34 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { 
-  KeyRound, 
   Shield, 
   Zap, 
   AlertTriangle,
   CheckCircle,
   ExternalLink,
-  Bot
+  Bot,
+  ArrowRight
 } from 'lucide-react';
 
 import GoogleAdsAgent from '@/components/GoogleAdsAgent';
 
-const API_KEY_PATTERN = /^AIza[0-9A-Za-z-_]{35}$/;
-
 export default function Home() {
-  const [apiKey, setApiKey] = useState('');
-  const [isValidKey, setIsValidKey] = useState(false);
   const [showAgent, setShowAgent] = useState(false);
-  const [keyError, setKeyError] = useState('');
+  const [apiKey, setApiKey] = useState('');
 
-  // Load API key from localStorage on mount
+  // Load API key from environment variable on mount
   useEffect(() => {
-    const savedKey = localStorage.getItem('gemini_api_key');
-    if (savedKey) {
-      setApiKey(savedKey);
-      validateApiKey(savedKey);
+    const envApiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    if (envApiKey) {
+      setApiKey(envApiKey);
     }
   }, []);
 
-  const validateApiKey = (key: string) => {
-    const isValid = API_KEY_PATTERN.test(key);
-    setIsValidKey(isValid);
-    setKeyError(isValid ? '' : 'Invalid API key format. Expected format: AIza...');
-    return isValid;
-  };
-
-  const handleApiKeyChange = (value: string) => {
-    setApiKey(value);
-    if (value) {
-      validateApiKey(value);
-    } else {
-      setIsValidKey(false);
-      setKeyError('');
-    }
-  };
-
-  const handleStart = () => {
-    if (isValidKey) {
-      localStorage.setItem('gemini_api_key', apiKey);
+  const handleSignIn = () => {
+    if (apiKey) {
       setShowAgent(true);
     }
   };
@@ -63,7 +39,7 @@ export default function Home() {
     setShowAgent(false);
   };
 
-  if (showAgent && isValidKey) {
+  if (showAgent && apiKey) {
     return (
       <div className="min-h-screen bg-background">
         <div className="absolute top-4 left-4 z-10">
@@ -180,42 +156,44 @@ export default function Home() {
           </CardContent>
         </Card>
 
-        {/* API Key Setup */}
+        {/* Sign In Section */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
-              <KeyRound className="h-5 w-5" />
-              <span>Gemini API Configuration</span>
+              <Shield className="h-5 w-5" />
+              <span>Ready to Optimize Your Campaigns?</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <label htmlFor="api-key" className="text-sm font-medium">
-                Gemini API Key
-              </label>
-              <Input
-                id="api-key"
-                type="password"
-                value={apiKey}
-                onChange={(e) => handleApiKeyChange(e.target.value)}
-                placeholder="AIzaSyD6g132PTTYP57oMc2tIfUb6sQRcpIYjhU"
-                className={keyError ? 'border-red-500' : isValidKey ? 'border-green-500' : ''}
-              />
-              {keyError && (
-                <p className="text-sm text-red-600">{keyError}</p>
-              )}
-              {isValidKey && (
+            {apiKey ? (
+              <div className="space-y-4">
                 <div className="flex items-center space-x-2 text-sm text-green-600">
                   <CheckCircle className="h-4 w-4" />
-                  <span>Valid API key format</span>
+                  <span>API configured and ready to use</span>
                 </div>
-              )}
-            </div>
+
+                <Button 
+                  onClick={handleSignIn}
+                  className="w-full"
+                  size="lg"
+                >
+                  Sign In to Google Ads AI Agent
+                  <ArrowRight className="h-4 w-4 ml-2" />
+                </Button>
+              </div>
+            ) : (
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  API key not found. Please check your environment configuration.
+                </AlertDescription>
+              </Alert>
+            )}
 
             <Alert>
               <Shield className="h-4 w-4" />
               <AlertDescription className="text-sm">
-                Your API key is stored locally in your browser and never sent to external servers.
+                Your API key is securely managed through environment variables. 
                 Get your free API key from{' '}
                 <a 
                   href="https://ai.google.dev/" 
@@ -228,15 +206,6 @@ export default function Home() {
                 </a>
               </AlertDescription>
             </Alert>
-
-            <Button 
-              onClick={handleStart}
-              disabled={!isValidKey}
-              className="w-full"
-              size="lg"
-            >
-              {isValidKey ? 'Start Google Ads AI Agent' : 'Enter Valid API Key'}
-            </Button>
           </CardContent>
         </Card>
 

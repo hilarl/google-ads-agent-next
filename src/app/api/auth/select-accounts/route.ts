@@ -1,8 +1,6 @@
 // app/api/auth/select-accounts/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import jwt from 'jsonwebtoken';
-import { getAuthSession } from '@/lib/authUtils';
+import { getAuthSession, setAuthCookie } from '@/lib/authUtils';
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,28 +18,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Update session with selected accounts
-    const updatedSession = {
+    await setAuthCookie({
       ...session,
       selectedAccounts,
       masterAccountId: masterAccountId || selectedAccounts[0],
-      accountsConfigured: true
-    };
-
-    // Create new session token
-    const sessionToken = jwt.sign(
-      updatedSession,
-      process.env.JWT_SECRET!,
-      { expiresIn: '7d' }
-    );
-
-    // Update cookie
-    const cookieStore = cookies();
-    cookieStore.set('auth-token', sessionToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60, // 7 days
-      path: '/'
+      accountsConfigured: true,
+      expiresIn: Math.floor((session.expiresAt - Date.now()) / 1000)
     });
 
     return NextResponse.json({ success: true });

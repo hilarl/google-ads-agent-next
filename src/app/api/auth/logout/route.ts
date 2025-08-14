@@ -1,8 +1,7 @@
 // app/api/auth/logout/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleAuthService } from '@/lib/googleAuthService';
-import { getAuthSession } from '@/lib/authUtils';
-import { cookies } from 'next/headers';
+import { getAuthSession, clearAuthCookie } from '@/lib/authUtils';
 
 const googleAuthService = new GoogleAuthService(
   process.env.GOOGLE_CLIENT_ID!,
@@ -24,8 +23,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Clear cookie
-    const cookieStore = cookies();
-    cookieStore.delete('auth-token');
+    await clearAuthCookie();
 
     return NextResponse.json({ success: true });
 
